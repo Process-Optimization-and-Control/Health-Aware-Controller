@@ -10,10 +10,13 @@ rng('default');
 
 %% Configuration
 % Flag to choose the model (choose only one)
-phenomeno = 1;
+phenomeno = 0;
 stepwise = 0;
-neuralnet = 0;
+neuralnet = 1;
 flagModel = [phenomeno,stepwise,neuralnet];
+
+% perfect feedback? yes = 1 | no = 0
+feedback = 0;
 
 % show the plot while simulating
 showPlot = false; % true | false
@@ -68,14 +71,14 @@ nmpcConfig.dumax = 0.05; % 0.01 | 0.1
 
 %crack length region
 nmpcConfig.x_healthy = 0.1; 
-nmpcConfig.x_threshold = 0.65;   % 0.4 | 0.65
-nmpcConfig.x_broken = 0.6;      % 0.5 | 0.75
+nmpcConfig.x_threshold = 0.6;   % 0.4 | 0.65
+nmpcConfig.x_broken = 0.65;      % 0.5 | 0.75
 nmpcConfig.nx = size(x0,1);
 nmpcConfig.nz = size(z0,1);
 nmpcConfig.nu = size(u0,1);
 
-nmpcConfig.nm = 20;  % 70
-nmpcConfig.np = 50; % 100
+nmpcConfig.nm = 20;  % 70  | 20
+nmpcConfig.np = 50; % 100 | 50 
 nmpcConfig.rho = 1e3*eye(nmpcConfig.nx); % 1e3 | 999999
 nmpcConfig.R = 1*eye(nmpcConfig.nu); % 0 | 0.01 | 1  
 
@@ -104,7 +107,7 @@ tBreak = [];
 
 % preparing for plotting
 %colors associated with each well
-cc = {'b','k','r'};
+cc = {'r','b','g'};
 
 % plant info
 xPlant = [];
@@ -137,12 +140,14 @@ for tt = 0:simLength
         
         tic
         % Calculating input with NMPC
-        % perfect information
-        [uk,erosionHat,inputSeq,OF,solFlag] = SolvingNMPC(solverNMPC,xk,zk,uk,sandArray(tt),par.GOR,par.PI,par.T,nmpcConfig);
-
-        % with diagnostics
-        % [uk,s,erosionHat,inputSeq,OF,solFlag] = SolvingNMPC(solverNMPC,xHat,zk,uk,sandArray(tt),par.GOR,par.PI,par.T,nmpcConfig);
-
+        
+        if feedback == 1 
+            % perfect information
+            [uk,erosionHat,inputSeq,OF,solFlag] = SolvingNMPC(solverNMPC,xk,zk,uk,sandArray(tt),par.GOR,par.PI,par.T,nmpcConfig);
+        else
+            % with diagnostics
+            [uk,erosionHat,inputSeq,OF,solFlag] = SolvingNMPC(solverNMPC,xHat,zk,uk,sandArray(tt),par.GOR,par.PI,par.T,nmpcConfig);
+        end
           % computing execution time
           controlTime = toc;
     end
@@ -251,70 +256,111 @@ end
 %% saving results
 if flagModel(1) == 1
     name = 'HAC_cst_pheno';
+    titlePlot = 'Phenomenological';
 elseif flagModel(2) == 1
     name = 'HAC_cst_step';  
+    titlePlot = 'Linear Regression';
 elseif flagModel(3) == 1
     name = 'HAC_cst_NN';
+    titlePlot = 'Neural Network Regression';
 end
 
 save(name,'simLength','tBreak','xPlant','zPlant','yPlant','totalProductionPlant','inputControl','flagControl','erosionPrediction','CPUtimeControl','ofControl','erosionHatDiag','inputPrediction')
 
 %% Plotting the final profiles
-f2 = figure(2);
+%clear 
+% close all
+% clc
+% 
+% load('HAC_cst_NN');
+% %load('HAC_cst_step');
+% load('HAC_cst_pheno');
 
+f2 = figure(2);
 if ~isempty(tBreak)
    simLength = tBreak;
 end
+
+% if we want to change the length of the plots
+plotTime = 200;
+
 time = 0:1:simLength;
 
-    subplot(3,1,1);
-        stairs(time,inputControl(1,:),cc{1},'LineWidth',1.5,'HandleVisibility','off');
+    a = subplot(3,1,2);
+        
+        stairs(time,inputControl(1,:),cc{1},'LineWidth',1.5); %,'HandleVisibility','off'
         hold on 
-        stairs(time,inputControl(2,:),cc{2},'LineWidth',1.5,'HandleVisibility','off');
-        stairs(time,inputControl(3,:),cc{3},'LineWidth',1.5,'HandleVisibility','off');
+        stairs(time,inputControl(2,:),cc{2},'LineWidth',1.5);
+        stairs(time,inputControl(3,:),cc{3},'LineWidth',1.5);
         
         yline(nmpcConfig.umax,'k--','LineWidth',1);
         
+        grid on
+        
         ylim([0,2.75]);
-        xlim([0,simLength]);
+        xlim([0,plotTime]);
+        xticks(0:20:plotTime);
 
-        legend('Max. gas cap.','Position',[0.69 0.90 0.20 0.041])
+        legend({'Well 1','Well 2','Well 3','max. Q_{gl}.'},'Location','eastoutside','FontSize',10);
+        %'Position',[0.71 0.61 0.24 0.18],'FontSize',10);
+
+        %xlabel('time [day]','FontSize',10);
+        ylabel('Q_{gl} [kg/s]','FontSize',12);
+        
+        title('Gas injection','FontSize',12);
+
+    subplot(3,1,1);
     
-        xlabel('time [day]');
-        ylabel('Gas lift rate [kg/s]');
-
-    subplot(3,1,2);
-
-        yline(nmpcConfig.x_threshold,'k--','LineWidth',1);
+        yline(nmpcConfig.x_broken,'k--','LineWidth',1);
         hold on
-        plot(time,xPlant(1,:),cc{1},'LineWidth',1.5);
-        plot(time,xPlant(2,:),cc{2},'LineWidth',1.5);
-        plot(time,xPlant(3,:),cc{3},'LineWidth',1.5);
+        
+        %plotting regions
+        X = 1:plotTime;
+        Y = ones(1,length(X))*nmpcConfig.x_threshold;
+        h = area(X,Y,'LineStyle','none');
+        h.FaceColor = [0,0,0];
+        h.EdgeColor = 'none';
+        h.FaceAlpha = 0.05;
+        h.BaseValue = nmpcConfig.x_healthy;
+
+        
+        %plot(time,xPlant(1,:),cc{1},'LineWidth',1.5);
+        plot(time,xPlant(2,:),'LineStyle',':','color',cc{2},'LineWidth',1.5);
+        plot(time,erosionHatDiag(2,:),'LineStyle','-','color',cc{2},'LineWidth',1.5);
+        %plot(time,xPlant(3,:),cc{3},'LineWidth',1.5);
                    
         box on
+        grid on
+       
+        legend({'threshold','\delta range','true','estimated'},'Location','eastoutside','FontSize',10);
+        %,'Position',[0.73 0.37 0.20 0.041],'FontSize',10);
+        ylim([0,0.7]);
+        xlim([0,plotTime]);
+        xticks(0:20:plotTime);
         
-        legend({'limit','Well 1','Well 2','Well 3'},'Location','northwest');
-        
-        ylim([0,3]);
-        xlim([0,simLength]);        
-        xlabel('Time [day]');
-        ylabel('Erosion [mm]');
+        %xlabel('time [day]','FontSize',10);
+        ylabel('d [mm]','FontSize',12);
+        title('Well 2: choke valve degradation','FontSize',12);
 
     subplot(3,1,3);
-        plot(time,totalProductionPlant,'b','LineWidth',1.5);
+        plot(time,totalProductionPlant,'k','LineWidth',1.5);
         hold on
+        grid on
         
         ylim([80,88])
-        xlim([0,simLength]);
-        xlabel('Time [day]');
-        ylabel('Total oil production [kg/s]');
+        xlim([0,plotTime]);
+        xticks(0:20:plotTime);
+        
+        xlabel('time [day]','FontSize',12);
+        ylabel('Q_{o,Total} [kg/s]','FontSize',12);
+        title('Total oil production (\Sigma Q_o)','FontSize',12);
     
     set(gcf,'color','w');
 
     namePlot = [name,'_results.pdf'];
     print(f2,'-r300','-dpdf',namePlot);
 
-
+%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%
     % Plotting --- diagnosis  %
     %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -332,7 +378,7 @@ time = 0:1:simLength;
         legend({'Limit','Estimated','Real'},'Location','northwest');
         
         ylim([0,nmpcConfig.x_threshold*1.5]);
-        xlim([0,simLength]);
+        xlim([0,plotTime]);
         xlabel('Time [day]');
         ylabel('Erosion [mm]');
         
@@ -355,7 +401,7 @@ time = 0:1:simLength;
         ylim([-0.1,1.1]);
         yticks(0:1);
         yticklabels({'no','yes'});
-        xlim([0,simLength]);
+        xlim([0,plotTime]);
         xlabel('iteration [-]');
         title('Control converged?');
        
@@ -363,7 +409,7 @@ time = 0:1:simLength;
   subplot(2,1,2)
         plot(time,CPUtimeControl,'marker','x','linestyle',':','markersize',5);
         
-        xlim([0,simLength]);
+        xlim([0,plotTime]);
         xlabel('Iteration [-]');
         ylabel('exec. time [s]');
         title('Control time');
@@ -423,7 +469,7 @@ set(gcf,'color','w');
         box on
         
         ylim([0,2.75]);
-        xlim([0,simLength]);
+        xlim([0,plotTime]);
     
         xlabel('Iteration [-]');
         ylabel('Gas lift rate [kg/s]');

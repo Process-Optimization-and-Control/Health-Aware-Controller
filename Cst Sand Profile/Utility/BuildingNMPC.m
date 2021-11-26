@@ -56,7 +56,7 @@ constV = (x_var - nmpcPar.x_healthy)./(nmpcPar.x_threshold - nmpcPar.x_healthy);
 L =  -((1 - exp(-constV{1}*w_po{1}))/(constV{1}+0.001) + (1 - exp(-constV{2}*w_po{2}))/(constV{2}+0.001) + (1 - exp(-constV{3}*w_po{3}))/(constV{3}+0.001));% + 1/2 * ((U1 - U_1)'*nmpcPar.R*(U1 - U_1));
 
 % creating system function (LHS of the dynamic equations)
-f = Function('f',{x_var,z_var,p_var},{diff/p_var{11},alg,L}); %diff in cm/day --> transforming in cm/s
+f = Function('f',{x_var,z_var,p_var},{diff/p_var{11},alg,L}); %diff in cm/day --> transforming in cm/s 
 
 %% Defining empty nlp-problem
 % objective function
